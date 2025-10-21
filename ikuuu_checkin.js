@@ -5,7 +5,7 @@
 // 2. 设置环境变量:
 //    IKUUU_USERNAME: 账号1&账号2
 //    IKUUU_PASSWORD: 密码1&密码2
-//    IKUUU_BASE_URL: (可选) 自定义ikuuu域名, 例如 https://ikuuu.dev
+//    IKUUU_BASE_URL: (可选) 自定义ikuuu域名, 例如 https://ikuuu.de
 //    IKUUU_DEBUG: (可选) 设为 "true" 来打印 HTML 源码用于调试
 // 3. GitHub Actions 依赖: npm install got@11 crypto-js tough-cookie
 
@@ -26,7 +26,7 @@ try {
 
 // 配置信息
 const config = {
-    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.club', // 默认域名，如果HTML源码来自不同域名请修改这里或设置环境变量
+    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 默认域名，如果HTML源码来自不同域名请修改这里或设置环境变量
     sendNotify: true,
     debug: process.env.IKUUU_DEBUG === 'true'
 };
@@ -38,8 +38,8 @@ config.userUrl = `${config.baseUrl}/user`;
 
 // 获取环境变量中的账号密码列表
 function getAccountList() {
-    const usernames = process.env.IKUUU_USERNAME || 'shuye_886@163.com';
-    const passwords = process.env.IKUUU_PASSWORD || 'qwe123..';
+    const usernames = process.env.IKUUU_USERNAME ;
+    const passwords = process.env.IKUUU_PASSWORD ;
     
     const usernameList = usernames.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
     const passwordList = passwords.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
