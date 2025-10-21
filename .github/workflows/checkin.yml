@@ -48,4 +48,4 @@ jobs:
           # ${{ secrets.SECRET_NAME }} 是固定语法
           IKUUU_USERNAME: ${{ secrets.IKUUU_USERNAME }}
           IKUUU_PASSWORD: ${{ secrets.IKUUU_PASSWORD }}
-        run: node checkin_ikuuu.js # 运行你上传的脚本文件
+        run: node ikuuu_checkin.js # 运行你上传的脚本文件
