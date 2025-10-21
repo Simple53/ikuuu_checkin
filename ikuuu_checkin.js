@@ -341,8 +341,7 @@ async function main() {
             notifyMsg += `👑 账户信息:\n`;
             notifyMsg += `- 会员类型: ${result.userInfo.account.memberType}\n`;
             notifyMsg += `- 在线设备: ${result.userInfo.account.deviceCount}\n`;
-    _         notifyMsg += `- 钱包余额: ${result.userInfo.account.balance}\n\n`;
-            
+            notifyMsg += `- 钱包余额: ${result.userInfo.account.balance}\n\n`;
             notifyMsg += `📊 流量信息:\n`;
             notifyMsg += `- 总流量: ${result.userInfo.traffic.total}\n`;
             notifyMsg += `- 今日已用: ${result.userInfo.traffic.used}\n`;
