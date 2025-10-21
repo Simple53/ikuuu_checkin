@@ -5,7 +5,7 @@
 // 2. 设置环境变量:
 //    IKUUU_USERNAME: 账号1&账号2
 //    IKUUU_PASSWORD: 密码1&密码2
-//    IKUUU_BASE_URL: (可选) 自定义ikuuu域名, 例如 https://ikuuu.de
+//    IKUUU_BASE_URL: (可选) 自定义ikuuu域名, 例如 https://ikuuu.dev
 //    IKUUU_DEBUG: (可选) 设为 "true" 来打印 HTML 源码用于调试
 // 3. GitHub Actions 依赖: npm install got@11 crypto-js tough-cookie
 
@@ -26,7 +26,7 @@ try {
 
 // 配置信息
 const config = {
-    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 默认域名，如果HTML源码来自不同域名请修改这里或设置环境变量
+    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 根据你的HTML源码，默认域名改为 .de
     sendNotify: true,
     debug: process.env.IKUUU_DEBUG === 'true'
 };
@@ -38,8 +38,9 @@ config.userUrl = `${config.baseUrl}/user`;
 
 // 获取环境变量中的账号密码列表
 function getAccountList() {
-    const usernames = process.env.IKUUU_USERNAME ;
-    const passwords = process.env.IKUUU_PASSWORD ;
+    // 默认值仅用于本地测试，在 GitHub Actions 中会被 Secrets 覆盖
+    const usernames = process.env.IKUUU_USERNAME || 'YOUR_EMAIL';
+    const passwords = process.env.IKUUU_PASSWORD || 'YOUR_PASSWORD';
     
     const usernameList = usernames.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
     const passwordList = passwords.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
@@ -184,22 +185,15 @@ async function checkinAccount(request) {
 }
 
 
-// ----------------- (修改点 5: 更新 getUserInfo 正则表达式) -----------------
-// 辅助函数：尝试多个正则模式提取信息
-function extractInfo(html, patterns, groupIndex = 1) {
-    for (const pattern of patterns) {
-        const match = html.match(pattern);
-        if (match && match[groupIndex]) {
-            // 清理 HTML 标签和多余空格
-            return match[groupIndex].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        }
-    }
-    return null; // 如果所有模式都未匹配成功
-}
-
+// ----------------- (修改点 6: 优化 getUserInfo 正则表达式) -----------------
 // 获取用户信息
 async function getUserInfo(request) {
     console.log(`[ikuuu] 开始获取用户信息`);
+    const defaultUserInfo = {
+        traffic: { total: '获取失败', used: '0B' },
+        account: { memberType: '获取失败', deviceCount: '获取失败', balance: '获取失败' }
+    };
+
     try {
         const response = await request.get(config.userUrl, {
             headers: {
@@ -208,109 +202,50 @@ async function getUserInfo(request) {
         });
         const html = response.body;
 
-        // 如果开启了 DEBUG 模式, 打印 HTML 源码
         if (config.debug) {
             console.log("\n[ikuuu DEBUG] ----------------- HTML 源码开始 -----------------\n");
             console.log(html);
             console.log("\n[ikuuu DEBUG] ----------------- HTML 源码结束 -----------------\n");
         }
         
-        // 初始化用户信息对象
-        const userInfo = {
-            traffic: { total: '获取失败', used: '0B' },
-            account: { memberType: '获取失败', deviceCount: '获取失败', balance: '获取失败' }
-        };
+        const userInfo = { ...defaultUserInfo }; // 创建副本以修改
+
+        // 1. 提取会员类型
+        const memberTypeMatch = html.match(/<h4>会员时长<\/h4>[\s\S]*?<div class="card-body">\s*([^<]+?)\s*<\/div>/i);
+        if (memberTypeMatch && memberTypeMatch[1]) {
+            // 清理可能存在的多余空格和换行
+            userInfo.account.memberType = memberTypeMatch[1].replace(/\s+/g, ' ').trim();
+        }
+
+        // 2. 提取剩余流量
+        const totalTrafficMatch = html.match(/<h4>剩余流量<\/h4>[\s\S]*?<span class="counter">([\d\.]+)<\/span>\s*(GB|MB|TB)/i);
+        if (totalTrafficMatch && totalTrafficMatch[1] && totalTrafficMatch[2]) {
+            userInfo.traffic.total = `${totalTrafficMatch[1]} ${totalTrafficMatch[2]}`;
+        }
+
+        // 3. 提取今日已用
+        const usedTodayMatch = html.match(/今日已用\s*:\s*([\d\.]+\s*[BKMGT]?B?)/i);
+        if (usedTodayMatch && usedTodayMatch[1]) {
+            userInfo.traffic.used = usedTodayMatch[1].trim();
+        }
+
+        // 4. 提取在线设备数
+        const deviceCountMatch = html.match(/<h4>在线设备数<\/h4>[\s\S]*?<span class="counter">(\d+)<\/span>\s*\/\s*<span class="counterup">(\d+)<\/span>/i);
+        if (deviceCountMatch && deviceCountMatch[1] && deviceCountMatch[2]) {
+            userInfo.account.deviceCount = `${deviceCountMatch[1]}/${deviceCountMatch[2]}`;
+        }
         
-        // 1. 提取会员类型 (基于 HTML 源码更新)
-        // 模式1: <h4>会员时长</h4> ... <div class="card-body"> ... 永久 (免费版) ... </div>
-        const memberTypePatterns = [
-            /<h4>会员时长<\/h4>[\s\S]*?<div class="card-body">\s*([\s\S]*?)\s*<\/div>/i,
-            /会员类型.*?>\s*([\s\S]*?)\s*<\//i // 备用模式，可能不准确
-        ];
-        const memberType = extractInfo(html, memberTypePatterns);
-        if (memberType) {
-            userInfo.account.memberType = memberType.split('\n').map(s => s.trim()).filter(Boolean).join(' '); // 处理多行情况
-        }
-
-        // 2. 提取总流量 (剩余流量) (基于 HTML 源码更新)
-        // 模式1: <h4>剩余流量</h4> ... <div class="card-body"> <span class="counter">55.66</span> GB ... </div>
-        const totalTrafficPatterns = [
-            /<h4>剩余流量<\/h4>[\s\S]*?<div class="card-body">\s*<span[^>]*>([\d\.]+)<\/span>\s*(GB|MB|TB)/i,
-            /剩余流量.*?(\d+(\.\d+)?\s*(GB|MB|TB))/i // 备用
-        ];
-        // 这个需要特殊处理，匹配数字和单位
-        let totalTraffic = "获取失败";
-        for (const pattern of totalTrafficPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1] && match[2]) {
-                totalTraffic = `${match[1].trim()} ${match[2].trim()}`;
-                break;
-            }
-        }
-        userInfo.traffic.total = totalTraffic;
-
-
-        // 3. 提取今日已用 (基于 HTML 源码更新)
-        // 模式1: ... <li class="breadcrumb-item active" ...>今日已用 : 0B</li>
-        const usedTodayPatterns = [
-            /今日已用\s*:\s*([\d\.]+\s*[BKMGT]?B?)/i, // 匹配 "今日已用 : 0B"
-            /今日已用.*?([\d\.]+\s*[BKMGT]?B?)/i // 备用
-        ];
-        const usedToday = extractInfo(html, usedTodayPatterns);
-        if (usedToday) {
-            userInfo.traffic.used = usedToday;
-        }
-
-        // 4. 提取在线设备数 (基于 HTML 源码更新)
-        // 模式1: <h4>在线设备数</h4> ... <span class="counter">0</span> / <span class="counterup">5</span> ...
-        const deviceCountPatterns = [
-            /<h4>在线设备数<\/h4>[\s\S]*?<span[^>]*>(\d+)<\/span>\s*\/\s*<span[^>]*>(\d+)<\/span>/i,
-            /在线设备数.*?(\d+)\s*\/\s*(\d+)/i // 备用
-        ];
-        // 这个也需要特殊处理
-        let deviceCount = "获取失败";
-        for (const pattern of deviceCountPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1] && match[2]) {
-                 // 限制数 (match[2]) 不太可能大于 100
-                 if (Number(match[2]) < 100) {
-                     deviceCount = `${match[1].trim()}/${match[2].trim()}`;
-                     break;
-                 }
-            }
-        }
-        // 从你的日志看，抓到了 2/55，那个 55 不对，用上面的正则优先匹配 counter/counterup
-        if (deviceCount === "获取失败") {
-            // 尝试旧的模式作为后备
-             const devicePatternOld = /(\d+)\s*\/\s*(\d+)\s*个设备/i;
-             const deviceMatchOld = html.match(devicePatternOld);
-             if(deviceMatchOld && deviceMatchOld[1] && deviceMatchOld[2]){
-                 if (Number(deviceMatchOld[2]) < 100) {
-                     deviceCount = `${deviceMatchOld[1].trim()}/${deviceMatchOld[2].trim()}`;
-                 }
-             }
-        }
-        userInfo.account.deviceCount = deviceCount;
-        
-        // 5. 提取钱包余额 (基于 HTML 源码更新)
-        // 模式1: <h4>钱包余额</h4> ... ¥ <span class="counter">1.00</span> ...
-        const balancePatterns = [
-            /<h4>钱包余额<\/h4>[\s\S]*?¥\s*<span[^>]*>([\d\.]+)<\/span>/i,
-            /钱包余额.*?¥\s*([\d\.]+)/i // 备用
-        ];
-        const balance = extractInfo(html, balancePatterns);
-        if (balance) {
-            userInfo.account.balance = `¥${balance}`;
+        // 5. 提取钱包余额
+        const balanceMatch = html.match(/<h4>钱包余额<\/h4>[\s\S]*?¥\s*<span class="counter">([\d\.]+)<\/span>/i);
+        if (balanceMatch && balanceMatch[1]) {
+            userInfo.account.balance = `¥${balanceMatch[1]}`;
         }
         
         console.log(`[ikuuu] 获取用户信息完成`);
         return userInfo;
     } catch (error) {
         console.log(`[ikuuu] 获取用户信息异常: ${error}`);
-        return {
-            traffic: { total: '获取失败', used: '获取失败' },
-            account: { memberType: '获取失败', deviceCount: '获取失败', balance: '获取失败' }
-        };
+        return defaultUserInfo; // 返回默认值
     }
 }
 // ----------------- (修改结束) -----------------
@@ -327,7 +262,7 @@ async function main() {
     console.log(`[ikuuu] 共发现 ${accounts.length} 个账号`);
     
     const results = [];
-    let notifyMsg = `ikuuu 签到域名: ${config.baseUrl}\n`; 
+    let notifyMsg = `ikuuu 签到域名: ${config.baseUrl}\n`;
     
     for (let i = 0; i < accounts.length; i++) {
         const result = await processAccount(accounts[i]);
@@ -357,7 +292,7 @@ async function main() {
             notifyMsg += `- 钱包余额: ${result.userInfo.account.balance}\n\n`;
             
             notifyMsg += `📊 流量信息:\n`;
-            notifyMsg += `- 剩余流量: ${result.userInfo.traffic.total}\n`; 
+            notifyMsg += `- 剩余流量: ${result.userInfo.traffic.total}\n`; // 标签改为“剩余流量”更准确
             notifyMsg += `- 今日已用: ${result.userInfo.traffic.used}\n`;
         }
     }
