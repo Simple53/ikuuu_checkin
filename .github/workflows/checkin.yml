@@ -1,0 +1,51 @@
+# 工作流的名称
+name: ikuuu Check-in
+
+# 触发工作流的条件
+on:
+  # 1. 定时触发 (schedule)
+  #    使用 cron 语法，'30 0 * * *' 表示在 UTC 时间每天 00:30 执行
+  #    这大约是北京时间 (UTC+8) 的上午 8:30
+  #    你可以使用 https://crontab.guru/ 来生成你想要的时间
+  schedule:
+    - cron: '30 0 * * *' 
+  
+  # 2. 手动触发 (workflow_dispatch)
+  #    这允许你在 GitHub 仓库的 Actions 页面点击 "Run workflow" 按钮来手动运行
+  #    非常适合用于测试
+  workflow_dispatch:
+
+# 定义要执行的任务
+jobs:
+  check-in:
+    # 任务运行的环境 (使用最新的 ubuntu 系统)
+    runs-on: ubuntu-latest 
+
+    # 任务的执行步骤
+    steps:
+      # 第1步：签出(Checkout)你的代码
+      # 这一步会把你的仓库代码（包括 ikuuu-checkin.js）下载到运行环境中
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 第2步：设置 Node.js 环境
+      # 你的脚本是 Node.js 脚本，所以需要安装 Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # 使用一个稳定的LTS版本
+
+      # 第3步：安装依赖
+      # 你的脚本需要 'got', 'crypto-js' 和 'tough-cookie'
+      # 注意：必须指定 got@11，因为你的脚本使用 require('got')，而 got v12+ 转向了ESM
+      - name: Install dependencies
+        run: npm install got@11 crypto-js tough-cookie
+
+      # 第4步：运行签到脚本
+      - name: Run check-in script
+        env:
+          # 从 GitHub Secrets 注入环境变量
+          # ${{ secrets.SECRET_NAME }} 是固定语法
+          IKUUU_USERNAME: ${{ secrets.IKUUU_USERNAME }}
+          IKUUU_PASSWORD: ${{ secrets.IKUUU_PASSWORD }}
+        run: node checkin_ikuuu.js # 运行你上传的脚本文件
