@@ -26,7 +26,7 @@ try {
 
 // 配置信息
 const config = {
-    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 根据你的HTML源码，默认域名改为 .de
+    baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 默认域名 .de
     sendNotify: true,
     debug: process.env.IKUUU_DEBUG === 'true'
 };
@@ -38,9 +38,8 @@ config.userUrl = `${config.baseUrl}/user`;
 
 // 获取环境变量中的账号密码列表
 function getAccountList() {
-    // 默认值仅用于本地测试，在 GitHub Actions 中会被 Secrets 覆盖
-    const usernames = process.env.IKUUU_USERNAME || 'YOUR_EMAIL';
-    const passwords = process.env.IKUUU_PASSWORD || 'YOUR_PASSWORD';
+    const usernames = process.env.IKUUU_USERNAME || 'YOUR_EMAIL'; // 替换为你的邮箱或确保设置了 Secrets
+    const passwords = process.env.IKUUU_PASSWORD || 'YOUR_PASSWORD'; // 替换为你的密码或确保设置了 Secrets
     
     const usernameList = usernames.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
     const passwordList = passwords.split(/[&\n]/).map(item => item.trim()).filter(Boolean);
@@ -95,10 +94,8 @@ async function processAccount(account) {
         
         result.success = true;
         
-        // 签到
         result.checkinResult = await checkinAccount(request);
         
-        // 获取用户信息
         result.userInfo = await getUserInfo(request);
         
         return result;
@@ -185,7 +182,7 @@ async function checkinAccount(request) {
 }
 
 
-// ----------------- (修改点 6: 优化 getUserInfo 正则表达式) -----------------
+// ----------------- (修改点 7: 加入详细日志) -----------------
 // 获取用户信息
 async function getUserInfo(request) {
     console.log(`[ikuuu] 开始获取用户信息`);
@@ -208,44 +205,58 @@ async function getUserInfo(request) {
             console.log("\n[ikuuu DEBUG] ----------------- HTML 源码结束 -----------------\n");
         }
         
-        const userInfo = { ...defaultUserInfo }; // 创建副本以修改
+        const userInfo = JSON.parse(JSON.stringify(defaultUserInfo)); // 深拷贝默认值
+
+        console.log('[ikuuu DEBUG] 开始解析HTML...');
 
         // 1. 提取会员类型
-        const memberTypeMatch = html.match(/<h4>会员时长<\/h4>[\s\S]*?<div class="card-body">\s*([^<]+?)\s*<\/div>/i);
+        const memberTypeRegex = /<h4>会员时长<\/h4>[\s\S]*?<div class="card-body">\s*([^<]+?)\s*<\/div>/i;
+        const memberTypeMatch = html.match(memberTypeRegex);
+        console.log('[ikuuu DEBUG] 会员类型匹配结果:', memberTypeMatch ? memberTypeMatch[1] : null);
         if (memberTypeMatch && memberTypeMatch[1]) {
-            // 清理可能存在的多余空格和换行
             userInfo.account.memberType = memberTypeMatch[1].replace(/\s+/g, ' ').trim();
         }
 
         // 2. 提取剩余流量
-        const totalTrafficMatch = html.match(/<h4>剩余流量<\/h4>[\s\S]*?<span class="counter">([\d\.]+)<\/span>\s*(GB|MB|TB)/i);
+        const totalTrafficRegex = /<h4>剩余流量<\/h4>[\s\S]*?<span class="counter">([\d\.]+)<\/span>\s*(GB|MB|TB)/i;
+        const totalTrafficMatch = html.match(totalTrafficRegex);
+        console.log('[ikuuu DEBUG] 剩余流量匹配结果:', totalTrafficMatch ? `${totalTrafficMatch[1]} ${totalTrafficMatch[2]}` : null);
         if (totalTrafficMatch && totalTrafficMatch[1] && totalTrafficMatch[2]) {
             userInfo.traffic.total = `${totalTrafficMatch[1]} ${totalTrafficMatch[2]}`;
         }
 
         // 3. 提取今日已用
-        const usedTodayMatch = html.match(/今日已用\s*:\s*([\d\.]+\s*[BKMGT]?B?)/i);
+        const usedTodayRegex = /今日已用\s*:\s*([\d\.]+\s*[BKMGT]?B?)/i;
+        const usedTodayMatch = html.match(usedTodayRegex);
+        console.log('[ikuuu DEBUG] 今日已用匹配结果:', usedTodayMatch ? usedTodayMatch[1] : null);
         if (usedTodayMatch && usedTodayMatch[1]) {
             userInfo.traffic.used = usedTodayMatch[1].trim();
+        } else {
+             userInfo.traffic.used = '获取失败'; // 如果正则没匹配到，明确设为失败
         }
 
         // 4. 提取在线设备数
-        const deviceCountMatch = html.match(/<h4>在线设备数<\/h4>[\s\S]*?<span class="counter">(\d+)<\/span>\s*\/\s*<span class="counterup">(\d+)<\/span>/i);
+        const deviceCountRegex = /<h4>在线设备数<\/h4>[\s\S]*?<span class="counter">(\d+)<\/span>\s*\/\s*<span class="counterup">(\d+)<\/span>/i;
+        const deviceCountMatch = html.match(deviceCountRegex);
+        console.log('[ikuuu DEBUG] 在线设备匹配结果:', deviceCountMatch ? `${deviceCountMatch[1]}/${deviceCountMatch[2]}` : null);
         if (deviceCountMatch && deviceCountMatch[1] && deviceCountMatch[2]) {
             userInfo.account.deviceCount = `${deviceCountMatch[1]}/${deviceCountMatch[2]}`;
         }
         
         // 5. 提取钱包余额
-        const balanceMatch = html.match(/<h4>钱包余额<\/h4>[\s\S]*?¥\s*<span class="counter">([\d\.]+)<\/span>/i);
+        const balanceRegex = /<h4>钱包余额<\/h4>[\s\S]*?¥\s*<span class="counter">([\d\.]+)<\/span>/i;
+        const balanceMatch = html.match(balanceRegex);
+        console.log('[ikuuu DEBUG] 钱包余额匹配结果:', balanceMatch ? `¥${balanceMatch[1]}` : null);
         if (balanceMatch && balanceMatch[1]) {
             userInfo.account.balance = `¥${balanceMatch[1]}`;
         }
         
-        console.log(`[ikuuu] 获取用户信息完成`);
+        console.log(`[ikuuu] 获取用户信息完成，解析结果见下:`);
+        console.log('[ikuuu DEBUG] 解析后的 userInfo 对象:', userInfo);
         return userInfo;
     } catch (error) {
         console.log(`[ikuuu] 获取用户信息异常: ${error}`);
-        return defaultUserInfo; // 返回默认值
+        return defaultUserInfo;
     }
 }
 // ----------------- (修改结束) -----------------
@@ -275,16 +286,14 @@ async function main() {
             continue;
         }
         
-        // 签到结果
         if (result.checkinResult) {
-            if (result.checkinResult.success) {
-                notifyMsg += `✓ 签到成功: ${result.checkinResult.message}\n\n`;
-            } else {
-                notifyMsg += `✗ 签到失败: ${result.checkinResult.message}\n\n`;
-            }
-        }
+            notifyMsg += result.checkinResult.success
+              ? `✓ 签到成功: ${result.checkinResult.message}\n\n`
+              : `✗ 签到失败: ${result.checkinResult.message}\n\n`;
+        } else {
+            notifyMsg += `? 签到步骤未执行或异常\n\n`; // 添加签到结果为空的情况
+        }
         
-        // 账户信息
         if (result.userInfo) {
             notifyMsg += `👑 账户信息:\n`;
             notifyMsg += `- 会员类型: ${result.userInfo.account.memberType}\n`;
@@ -292,9 +301,11 @@ async function main() {
             notifyMsg += `- 钱包余额: ${result.userInfo.account.balance}\n\n`;
             
             notifyMsg += `📊 流量信息:\n`;
-            notifyMsg += `- 剩余流量: ${result.userInfo.traffic.total}\n`; // 标签改为“剩余流量”更准确
+            notifyMsg += `- 剩余流量: ${result.userInfo.traffic.total}\n`;
             notifyMsg += `- 今日已用: ${result.userInfo.traffic.used}\n`;
-        }
+        } else {
+            notifyMsg += `\n无法获取账户信息。\n`; // 添加用户信息为空的情况
+        }
     }
     
     if (config.sendNotify) {
@@ -310,10 +321,10 @@ async function main() {
 main().catch(error => {
     console.log(`[ikuuu] 运行异常: ${error}`);
     try {
-        notify('ikuuu签到', `运行异常: ${error}`).catch(e => {
-            console.log(`[ikuuu] 发送通知失败: ${e}`);
+        notify('ikuuu签到脚本运行异常', `错误详情: ${error}`).catch(e => { // 优化异常通知标题和内容
+            console.log(`[ikuuu] 发送异常通知失败: ${e}`);
         });
     } catch (e) {
-        console.log(`[ikuuu] 发送通知异常: ${e}`);
+        console.log(`[ikuuu] 尝试发送异常通知时发生异常: ${e}`);
     }
 });
