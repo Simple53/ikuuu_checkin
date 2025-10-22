@@ -28,7 +28,7 @@ try {
 const config = {
     baseUrl: process.env.IKUUU_BASE_URL || 'https://ikuuu.de', // 默认域名 .de
     sendNotify: true,
-    debug: process.env.IKUUU_DEBUG === 'true'
+    debug: process.env.IKUUU_DEBUG = 'true'
 };
 
 config.loginUrl = `${config.baseUrl}/auth/login`;
