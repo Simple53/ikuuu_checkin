@@ -25,7 +25,7 @@ try {
 
 // 配置信息
 const config = {
-    baseUrl: process.env.IKUUU_BASE_URL|| https://ikuuu.win/user , // 默认域名 .de
+    baseUrl: process.env.IKUUU_BASE_URL, // 默认域名 .de
     sendNotify: true,
     // debug 标志保留，但不再打印HTML
     debug: process.env.IKUUU_DEBUG === 'true'
